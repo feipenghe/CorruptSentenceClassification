@@ -6,11 +6,16 @@ import time
 import numpy as np
 import torch
 import torch.nn as nn
-import torchtext
+
 from torch.utils.data import DataLoader
+
 from model import DeepAveragingNetwork
 from torch.utils.data.sampler import SubsetRandomSampler
 
+from hw4_a6 import collate_fn
+from train import generate_sampler
+from tqdm import tqdm
+from util import SST2Dataset
 def set_seed(seed):
     """ Set various random seeds for reproducibility. """
     random.seed(seed)
@@ -18,7 +23,7 @@ def set_seed(seed):
     torch.manual_seed(seed)
 
 
-def train_one_epoch(model, iterator, criterion, optimizer, padding_index):
+def train_one_epoch(model, train_loader, criterion, optimizer, padding_index):
     """ Train a model for one epoch.
 
     Arguments:
@@ -36,38 +41,18 @@ def train_one_epoch(model, iterator, criterion, optimizer, padding_index):
     model.train()
 
     epoch_loss = 0.0
-
-    for batch in iterator:
-
+    tqdm_train_loader = tqdm(train_loader)
+    for batch in tqdm_train_loader:
+        sentences, labels = batch
         optimizer.zero_grad()
 
-        # batch.text has shape (seq_len, batch_size), so we transpose it to
-        # have the right shape of
-        # (batch_size, seq_len)
-        batch_text = torch.t(batch.text)
-
-        logits = model(batch_text, padding_index)
-        loss = criterion(logits, batch.label)
+        logits = model(sentences, padding_index)
+        labels = labels.squeeze()
+        loss = criterion(logits, labels)
 
         # TODO: implement L2 loss here
         # Note: model.parameters() returns an iterator over the parameters
         # (which are tensors) of the model
-
-        # L2 by each input
-        # L2 =0
-        # if args.L2:
-        #     # print("L2 is activated")
-        #     L2_squared = torch.zeros(1)
-        #     for parameter in model.parameters():
-        #         # possibly sum of L2 for each parameter tensor
-        #         parameter_squared = torch.mul(parameter, parameter)
-        #         for input_parameter_squared in parameter_squared:
-        #             L2_squared += torch.sum(input_parameter_squared)
-        #         L2 += math.sqrt(L2_squared)
-        #         L2_squared = torch.zeros(1) # reinitialize
-        #     # print(L2)
-        # else:
-        #     L2 = 0
 
         # L2 by the batch
         if args.L2:
@@ -83,7 +68,6 @@ def train_one_epoch(model, iterator, criterion, optimizer, padding_index):
             L2 = 0
 
         regularized_loss = loss + 1e-4*L2
-        # print("loss: ", loss, "      after regularization ", regularized_loss)
 
         # backprop regularized loss and update parameters
         regularized_loss.backward()
@@ -91,10 +75,10 @@ def train_one_epoch(model, iterator, criterion, optimizer, padding_index):
 
         epoch_loss += loss.item()
 
-    return epoch_loss / len(iterator)
+    return epoch_loss / len(train_loader)
 
 
-def evaluate(model, iterator, criterion, padding_index):
+def evaluate(model, val_loader, criterion, padding_index):
     """ Evaluate a model.
 
     Arguments:
@@ -109,12 +93,14 @@ def evaluate(model, iterator, criterion, padding_index):
     # put model in eval mode
     model.eval()
     epoch_loss = 0.0
-    for batch in iterator:
-        batch_text = torch.t(batch.text)
-        logits = model(batch_text, padding_index)
-        loss = criterion(logits, batch.label)
+    for batch in val_loader:
+        sentences, labels = batch
+        logits = model(sentences, padding_index)
+
+        labels = labels.squeeze()
+        loss = criterion(logits, labels)
         epoch_loss += loss.item()
-    return epoch_loss / len(iterator)
+    return epoch_loss / len(val_loader)
 
 
 def accuracy(logits, labels):
@@ -132,7 +118,7 @@ def accuracy(logits, labels):
     correct = (predictions == labels).float()
     return correct.mean()
 
-from util import SST2Dataset
+
 def main(args):
     """Main method: gathers and splits train/dev/test data, builds and then
     trains and evaluates a model.
@@ -145,47 +131,22 @@ def main(args):
     set_seed(args.seed)
 
     # get iterators for data
-    # text = torchtext.data.Field()
-    # label = torchtext.data.LabelField(dtype = torch.long)
-    train_data = SST2Dataset("./challenge-data/train.tsv", token_level=token_level, unk_cutoff=unk_cutoff)
-    # train_data, test_data = torchtext.datasets.IMDB.splits(
-    #     text, label, root=args.data_dir)
-
-    train_data, dev_data = train_data.split(random_state=random.seed(args.seed))
-
-    print(f"Example data point:\n{vars(train_data.examples[0])}\n")
-
-    # text.build_vocab(train_data, max_size=args.vocab_size)
-    # label.build_vocab(train_data)
-    #
-    # train_iterator, dev_iterator, test_iterator = torchtext.data.BucketIterator.splits(
-    #     (train_data, dev_data, test_data), batch_size=args.batch_size, shuffle=True)
+    train_data = SST2Dataset("./challenge-data/train.tsv", token_level="word", unk_cutoff=3)
 
 
     # sampling
-    n =len(train_data)
-    indices = list(range(n))
-    used_ratio = 1/100
-    val_ratio = 1/5
-
-    used_n = int(np.floor(n*used_ratio))
-    split = int(np.floor(used_n*val_ratio))
-    shuffle_dataset = True
-
-    if shuffle_dataset:
-        # np.random.seed(random_seed)
-        np.random.shuffle(indices)
-    train_indices, val_indices = indices[split:used_n], indices[:split]
-
-    train_sampler = SubsetRandomSampler(train_indices)
-    val_sampler = SubsetRandomSampler(val_indices)
+    n = len(train_data)
+    train_sampler, val_sampler = generate_sampler(n)
 
     print("loading data...")
+    TRAINING_BATCH_SIZE = 64
+    VAL_BATCH_SIZE = 128
     # Create data loaders for creating and iterating over batches
     train_loader = DataLoader(train_data, batch_size=TRAINING_BATCH_SIZE, collate_fn=collate_fn,
                               sampler=train_sampler)
     # train_loader = DataLoader(train_dataset, batch_size=TRAINING_BATCH_SIZE, collate_fn=collate_fn, shuffle=True)
     val_loader = DataLoader(train_data, batch_size=VAL_BATCH_SIZE, sampler=val_sampler, collate_fn=collate_fn)
+
 
 
 
@@ -208,9 +169,9 @@ def main(args):
     for epoch in range(args.num_epochs):
         # train for one epoch
         epoch_train_loss = train_one_epoch(
-            model, train_iterator, criterion, optim, padding_index)
+            model, train_loader, criterion, optim, padding_index)
         # evaluate on dev set
-        dev_loss = evaluate(model, dev_iterator, criterion, padding_index)
+        dev_loss = evaluate(model, val_loader, criterion, padding_index)
         print(f"{epoch} \t {epoch_train_loss:.5f} \t {dev_loss:.5f}")
         loss_l.append(dev_loss)
         loss_ix  += 1
@@ -227,8 +188,8 @@ def main(args):
                 break
 
     print(f"Evaluating best model (from epoch {best_epoch}) on test set.")
-    test_loss = evaluate(best_model, test_iterator, criterion, padding_index)
-    test_accuracy = evaluate(best_model, test_iterator, accuracy, padding_index)
+    test_loss = evaluate(best_model, val_loader, criterion, padding_index)
+    test_accuracy = evaluate(best_model, val_loader, accuracy, padding_index)
     print(f"test loss: {test_loss}\ntest accuracy: {test_accuracy}")
 
     end = time.time()
@@ -249,7 +210,7 @@ if __name__ == '__main__':
     # data arguments
     parser.add_argument('--data_dir', type=str, default='/dropbox/19-20/572/hw9/data')
     parser.add_argument('--vocab_size', type=int, default=20000)
-    parser.add_argument('--padding_index', type=int, default=1)
+    parser.add_argument('--padding_index', type=int, default=0)
     args = parser.parse_args()
 
     main(args)

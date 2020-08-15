@@ -114,6 +114,7 @@ class SST2Dataset(Dataset):
 
         labels = torch.tensor(labels)
 
+
         self.sentences = indexed_sentences
         self.labels = labels
 
@@ -137,8 +138,6 @@ class SST2Dataset(Dataset):
         count = 0
         threshold = 0.1
 
-
-        import nltk
         # Count unique words (lower case)
         if token_level == "word":
             for sent in sentences:

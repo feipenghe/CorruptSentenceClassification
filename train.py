@@ -8,25 +8,20 @@ import numpy as np
 from util import SST2Dataset, load_embedding_matrix
 from hw4_a6 import RNNBinaryClassificationModel, collate_fn, TRAINING_BATCH_SIZE, NUM_EPOCHS, LEARNING_RATE,\
                 VAL_BATCH_SIZE
-import copy
 
-def train(device, use_glove, token_level="word", unk_cutoff = 3 ):
-    # Load datasets
-    train_dataset = SST2Dataset("./challenge-data/train.tsv", token_level = token_level, unk_cutoff = unk_cutoff)
 
-    # val_dataset = SST2Dataset("./challenge-data/dev.tsv", train_dataset.vocab, train_dataset.reverse_vocab, token_level = token_level)
-    n =len(train_dataset)
+def generate_sampler(n, used_ratio = 1/100, val_ratio = 1/5, shuffle_dataset = True):
+    '''
+    Generate training data sampler and validation data sampler
+    :param n: the size of dataset
+    :param used_ratio: how much dataset is used to train
+    :param val_ratio: how much training dataset is splitted into validation
+    :param shuffle_dataset: whether to shuffle dataset
+    :return: train_sampler, validation sampler
+    '''
     indices = list(range(n))
-    used_ratio = 1/100
-    val_ratio = 1/5
-
-    used_n = int(np.floor(n*used_ratio))
-    split = int(np.floor(used_n*val_ratio))
-
-
-
-    shuffle_dataset = True
-
+    used_n = int(np.floor(n * used_ratio))
+    split = int(np.floor(used_n * val_ratio))
     if shuffle_dataset:
         # np.random.seed(random_seed)
         np.random.shuffle(indices)
@@ -34,6 +29,18 @@ def train(device, use_glove, token_level="word", unk_cutoff = 3 ):
 
     train_sampler = SubsetRandomSampler(train_indices)
     val_sampler = SubsetRandomSampler(val_indices)
+
+    return train_sampler, val_sampler
+
+def train(device, use_glove, token_level="word", unk_cutoff = 3 ):
+    # Load datasets
+    train_dataset = SST2Dataset("./challenge-data/train.tsv", token_level = token_level, unk_cutoff = unk_cutoff)
+
+    # val_dataset = SST2Dataset("./challenge-data/dev.tsv", train_dataset.vocab, train_dataset.reverse_vocab, token_level = token_level)
+    n =len(train_dataset)
+
+
+    train_sampler, val_sampler = generate_sampler(n)
 
     print("loading data...")
     # Create data loaders for creating and iterating over batches
@@ -163,5 +170,5 @@ if __name__ == "__main__":
     ap.add_argument("--token_level", default = "character")
     ap.add_argument("--unk_cutoff", default= 3)
     args = ap.parse_args()
-    # token_level = "character"
+
     train(int(args.gpu), bool(args.use_glove), args.token_level, unk_cutoff= int(args.unk_cutoff))

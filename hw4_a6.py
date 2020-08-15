@@ -51,13 +51,8 @@ def collate_fn(batch):
         padded_t = torch.cat( (cur_sent_t.long(), pad_t.repeat(num_pad).long() ) )
         padded_sents.append(padded_t)
 
-
-
     padded_sents = iterable2tensor(padded_sents)
     labels = iterable2tensor(labels)
-    print(padded_sents)
-    print(labels)
-    exit()
     return padded_sents, labels
 
 
