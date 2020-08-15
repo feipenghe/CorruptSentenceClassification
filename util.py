@@ -8,7 +8,7 @@ import csv
 from collections import Counter
 
 
-def load_embedding_matrix(vocab, use_glove, glove_file_path="glove.6B.50d.txt"):
+def load_embedding_matrix(vocab, use_glove, glove_file_path="crawl-300d-2M-subword.vec"):
     if use_glove:
         embedding_dim = -1
     else:
@@ -22,22 +22,24 @@ def load_embedding_matrix(vocab, use_glove, glove_file_path="glove.6B.50d.txt"):
         embedding_matrix = torch.nn.init.xavier_uniform_(embedding_matrix)
         # embedding_matrix = torch.normal()
     else:
-        print("use glove")
+        print("use embedding from path: ", glove_file_path)
         with open(glove_file_path, "r", encoding="utf8") as f:
+            found_embedding_count = 0
             for token_embedding in f.readlines():
                 token, *embedding = token_embedding.strip().split(" ")
-
-                if token not in vocab:
+                if token not in vocab:  # token is from embedding file
                     continue
 
                 embedding = torch.tensor([float(e) for e in embedding], dtype=torch.float32)
 
                 assert token not in embeddings
                 assert embedding_dim < 0 or embedding_dim == len(embedding)
-
+                found_embedding_count += 1
                 embeddings[token] = embedding
                 embedding_dim = len(embedding)
-
+            not_found_embedding_count = len(vocab) - found_embedding_count
+            print("Not found embedding count: ", not_found_embedding_count, " Ratio: ", not_found_embedding_count*1.0/len(vocab))
+            print("Found embedding count: ", found_embedding_count, " Ratio: ", found_embedding_count * 1.0/len(vocab))
         all_embeddings = torch.stack(list(embeddings.values()), dim=0)
 
         embedding_mean = all_embeddings.mean()
@@ -84,7 +86,7 @@ class SST2Dataset(Dataset):
 
         # Vocab maps tokens to indices
         if vocab is None:
-            vocab = self._build_vocab(correct_sents,unk_cutoff , token_level=token_level)
+            vocab = self._build_vocab(correct_sents, unk_cutoff , token_level=token_level)
             reverse_vocab = None
 
         # Reverse vocab maps indices to tokens
