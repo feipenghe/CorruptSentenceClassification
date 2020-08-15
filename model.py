@@ -1,47 +1,52 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-
-class LinearLayer(nn.Module):
-
-    def __init__(self, input_size, output_size):
-        super(LinearLayer, self).__init__()
-        # linear layer has two parameters: weights and biases
-        self.weight = nn.Parameter(torch.Tensor(input_size, output_size))
-        self.bias = nn.Parameter(torch.Tensor(output_size))
-        # initialize the parameters
-        nn.init.xavier_uniform_(self.weight)
-        nn.init.uniform_(self.bias)
-
-    def forward(self, inputs):
-        """Compute f(x) = xW + b.
-
-        Arguments:
-            inputs: a tensor of shape (batch_size, input_size)
-
-        Returns:
-            a tensor of shape (batch_size, output_size)
-        """
-        # TODO: implement the forward pass of a linear layer.
-        # You will want to use torch.matmul, as well as tensor addition
-        return torch.matmul(inputs, self.weight) + self.bias
-
+from util import load_embedding_matrix
+#
+# class LinearLayer(nn.Module):
+#
+#     def __init__(self, input_size, output_size):
+#         super(LinearLayer, self).__init__()
+#         # linear layer has two parameters: weights and biases
+#         self.weight = nn.Parameter(torch.Tensor(input_size, output_size))
+#         self.bias = nn.Parameter(torch.Tensor(output_size))
+#         # initialize the parameters
+#         nn.init.xavier_uniform_(self.weight)
+#         nn.init.uniform_(self.bias)
+#
+#     def forward(self, inputs):
+#         """Compute f(x) = xW + b.
+#
+#         Arguments:
+#             inputs: a tensor of shape (batch_size, input_size)
+#
+#         Returns:
+#             a tensor of shape (batch_size, output_size)
+#         """
+#         # TODO: implement the forward pass of a linear layer.
+#         # You will want to use torch.matmul, as well as tensor addition
+#         return torch.matmul(inputs, self.weight) + self.bias
 
 class DeepAveragingNetwork(nn.Module):
 
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, num_classes):
+    def __init__(self, vocab, embedding_dim, hidden_dim, num_classes):
         super(DeepAveragingNetwork, self).__init__()
+
+        vocab_size = len(vocab)
 
         # embedding matrix
         self.embedding = nn.Embedding(
-            vocab_size, embedding_dim, padding_idx=1)
+            vocab_size, embedding_dim, max_norm = 10, padding_idx=0)
+        embedding_matrix =  load_embedding_matrix(vocab, use_glove= True)
+        self.embedding.weight.data = torch.nn.init.xavier_uniform_(embedding_matrix)
         # first hidden layer
-        self.hidden = LinearLayer(embedding_dim, hidden_dim)
-        # second hidden layer
-        self.hidden2 = LinearLayer(hidden_dim, hidden_dim)
-        # output layer
-        self.output = LinearLayer(hidden_dim, num_classes)
+        self.hidden = nn.Linear(embedding_dim, hidden_dim)
+        # # second hidden layer
+        # self.hidden2 = nn.Linear(hidden_dim, hidden_dim)
+        # # output layer
+        # self.hidden3 = nn.Linear(hidden_dim, hidden_dim)
+
+        self.output = nn.Linear(hidden_dim, num_classes)
 
     def forward(self, text, padding_index):
         # (batch_size, seq_len, embed_dim)
@@ -59,7 +64,9 @@ class DeepAveragingNetwork(nn.Module):
         bagged = torch.sum(embeddings, dim=1) / lengths
         # (batch_size, hidden_dim)
         hidden = F.relu(self.hidden(bagged))
-        hidden = F.relu(self.hidden2(hidden))
+        # hidden = F.relu(self.hidden2(hidden))
+        # hidden = F.relu(self.hidden3(hidden))
         # (batch_size, num_classes)
         logits = self.output(hidden)
+
         return logits

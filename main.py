@@ -38,6 +38,7 @@ def train_one_epoch(model, train_loader, criterion, optimizer, padding_index):
     """
 
     # put model back into training mode
+    model.to(1)
     model.train()
 
     epoch_loss = 0.0
@@ -46,9 +47,9 @@ def train_one_epoch(model, train_loader, criterion, optimizer, padding_index):
         sentences, labels = batch
         optimizer.zero_grad()
 
-        logits = model(sentences, padding_index)
+        logits = model(sentences.to(1), padding_index)
         labels = labels.squeeze()
-        loss = criterion(logits, labels)
+        loss = criterion(logits, labels.to(1))
 
         # TODO: implement L2 loss here
         # Note: model.parameters() returns an iterator over the parameters
@@ -67,8 +68,10 @@ def train_one_epoch(model, train_loader, criterion, optimizer, padding_index):
         else:
             L2 = 0
 
-        regularized_loss = loss + 1e-4*L2
-
+        regularized_loss = loss + L2
+        import math
+        if math.isnan(loss):
+            exit()
         # backprop regularized loss and update parameters
         regularized_loss.backward()
         optimizer.step()
@@ -95,10 +98,10 @@ def evaluate(model, val_loader, criterion, padding_index):
     epoch_loss = 0.0
     for batch in val_loader:
         sentences, labels = batch
-        logits = model(sentences, padding_index)
+        logits = model(sentences.to(1), padding_index)
 
         labels = labels.squeeze()
-        loss = criterion(logits, labels)
+        loss = criterion(logits, labels.to(1))
         epoch_loss += loss.item()
     return epoch_loss / len(val_loader)
 
@@ -131,7 +134,7 @@ def main(args):
     set_seed(args.seed)
 
     # get iterators for data
-    train_data = SST2Dataset("./challenge-data/train.tsv", token_level="word", unk_cutoff=3)
+    train_data = SST2Dataset("./challenge-data/train_20000.tsv", token_level="word", unk_cutoff=3)
 
 
     # sampling
@@ -152,7 +155,7 @@ def main(args):
 
     # build model
     model = DeepAveragingNetwork(
-        len(train_data.vocab), args.embedding_dim, args.hidden_dim, 2)
+        train_data.vocab, args.embedding_dim, args.hidden_dim, 2)
 
     # set up optimizer
     optim = torch.optim.Adam(model.parameters(), lr=1e-3)
@@ -204,7 +207,7 @@ if __name__ == '__main__':
     # training arguments
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--seed', type=int, default=572)
-    parser.add_argument('--num_epochs', type=int, default=15)
+    parser.add_argument('--num_epochs', type=int, default=25)
     parser.add_argument('--patience', type=int, default=None)
     parser.add_argument('--L2', action="store_true")
     # data arguments

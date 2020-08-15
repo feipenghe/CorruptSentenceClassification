@@ -10,7 +10,7 @@ from hw4_a6 import RNNBinaryClassificationModel, collate_fn, TRAINING_BATCH_SIZE
                 VAL_BATCH_SIZE
 
 
-def generate_sampler(n, used_ratio = 1/100, val_ratio = 1/5, shuffle_dataset = True):
+def generate_sampler(n, used_ratio = 1, val_ratio = 1/10, shuffle_dataset = True):
     '''
     Generate training data sampler and validation data sampler
     :param n: the size of dataset

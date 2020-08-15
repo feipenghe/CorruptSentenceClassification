@@ -12,7 +12,7 @@ def load_embedding_matrix(vocab, use_glove, glove_file_path="glove.6B.50d.txt"):
     if use_glove:
         embedding_dim = -1
     else:
-        embedding_dim = 100
+        embedding_dim = 300
 
     embeddings = {}
 
@@ -48,14 +48,6 @@ def load_embedding_matrix(vocab, use_glove, glove_file_path="glove.6B.50d.txt"):
         # Overwrite the embeddings we get from GloVe. The ones we don't find are left randomly initialized.
         for token, embedding in embeddings.items():
             embedding_matrix[vocab[token], :] = embedding
-
-
-
-
-
-
-
-
 
 
     # The padding token is explicitly initialized to 0.
