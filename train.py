@@ -5,6 +5,7 @@ from tqdm import tqdm
 import argparse
 from torch.utils.data.sampler import SubsetRandomSampler
 import numpy as np
+import torch.nn as nn
 from util import SST2Dataset, load_embedding_matrix
 from hw4_a6 import RNNBinaryClassificationModel, collate_fn, TRAINING_BATCH_SIZE, NUM_EPOCHS, LEARNING_RATE,\
                 VAL_BATCH_SIZE
@@ -34,7 +35,7 @@ def generate_sampler(n, used_ratio = 1, val_ratio = 1/10, shuffle_dataset = True
 
 def train(device, use_glove, token_level="word", unk_cutoff = 3 ):
     # Load datasets
-    train_dataset = SST2Dataset("./challenge-data/train.tsv", token_level = token_level, unk_cutoff = unk_cutoff)
+    train_dataset = SST2Dataset("./challenge-data/train_200000.tsv", token_level = token_level, unk_cutoff = unk_cutoff)
 
     # val_dataset = SST2Dataset("./challenge-data/dev.tsv", train_dataset.vocab, train_dataset.reverse_vocab, token_level = token_level)
     n =len(train_dataset)
@@ -59,11 +60,14 @@ def train(device, use_glove, token_level="word", unk_cutoff = 3 ):
         print(f"Correct: {correctness}. Sentence: {sequence}")
 
     embedding_matrix = load_embedding_matrix(train_dataset.vocab, use_glove)
-    # device = 0
-    model = RNNBinaryClassificationModel(embedding_matrix, device)
+
+    model = RNNBinaryClassificationModel(embedding_matrix, device).cuda()
+    print("Data parallel!!!!!!!!")
+    model = nn.DataParallel(model, device_ids = [0,1])
 
     model.to(device)
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay = 1)
+
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=0.01*LEARNING_RATE)
     import sys
     best_val_loss = sys.maxsize
     best_val_acc = None # come with best validation loss
@@ -92,9 +96,9 @@ def train(device, use_glove, token_level="word", unk_cutoff = 3 ):
             # print("labels_batch: ", labels_batch)
             # exit()
             # Compute loss and number of correct predictions
-            loss = model.loss(logits, labels_batch)
+            loss = model.module.loss(logits, labels_batch)
 
-            correct = model.accuracy(logits, labels_batch).item() * len(logits)
+            correct = model.module.accuracy(logits, labels_batch).item() * len(logits)
             # old_model = copy.deepcopy(model)
             # print(model.parameters())
             optimizer.zero_grad()
