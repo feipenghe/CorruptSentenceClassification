@@ -6,12 +6,35 @@ import argparse
 from torch.utils.data.sampler import SubsetRandomSampler
 import numpy as np
 import torch.nn as nn
-from util import SST2Dataset, load_embedding_matrix
+from util import SentenceDataset, load_embedding_matrix
 from hw4_a6 import RNNBinaryClassificationModel, collate_fn, TRAINING_BATCH_SIZE, NUM_EPOCHS, LEARNING_RATE,\
                 VAL_BATCH_SIZE
 
 
-def generate_sampler(n, used_ratio = 1, val_ratio = 1/10, shuffle_dataset = True):
+def generate_pair_sampler(n, used_ratio = 1, val_ratio = 1/30, shuffle_dataset = True):
+    '''
+    Sample pair of sentences as mini-batch
+    :param n:
+    :param used_ratio:
+    :param val_ratio:
+    :param shuffle_dataset:
+    :return:
+    '''
+    indices = list(range(n))
+    sent1_indices = indices[::2]
+    if shuffle_dataset:
+        sent1_indices
+
+    used_n = int(np.floor(n * used_ratio))
+    split = int(np.floor(used_n * val_ratio))
+    if shuffle_dataset:
+        # np.random.seed(random_seed)
+        np.random.shuffle(indices)
+    train_indices, val_indices = indices[split:used_n], indices[:split]
+
+
+
+def generate_sampler(n, used_ratio = 1, val_ratio = 1/30, shuffle_dataset = True):
     '''
     Generate training data sampler and validation data sampler
     :param n: the size of dataset
@@ -25,7 +48,8 @@ def generate_sampler(n, used_ratio = 1, val_ratio = 1/10, shuffle_dataset = True
     split = int(np.floor(used_n * val_ratio))
     if shuffle_dataset:
         # np.random.seed(random_seed)
-        np.random.shuffle(indices)
+        np.random.shuffle(indic
+es)
     train_indices, val_indices = indices[split:used_n], indices[:split]
 
     train_sampler = SubsetRandomSampler(train_indices)
@@ -35,10 +59,11 @@ def generate_sampler(n, used_ratio = 1, val_ratio = 1/10, shuffle_dataset = True
 
 def train(device, use_glove, token_level="word", unk_cutoff = 3 ):
     # Load datasets
-    train_dataset = SST2Dataset("./challenge-data/train_200000.tsv", token_level = token_level, unk_cutoff = unk_cutoff)
+    train_dataset = SentenceDataset("./challenge-data/train.tsv", tokenizer_path = None, token_level = token_level, unk_cutoff = unk_cutoff)
 
     # val_dataset = SST2Dataset("./challenge-data/dev.tsv", train_dataset.vocab, train_dataset.reverse_vocab, token_level = token_level)
     n =len(train_dataset)
+
 
 
     train_sampler, val_sampler = generate_sampler(n)
@@ -67,13 +92,15 @@ def train(device, use_glove, token_level="word", unk_cutoff = 3 ):
 
     model.to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=0.01*LEARNING_RATE)
+    optimizer = optim.RMSprop(model.parameters(), lr=LEARNING_RATE, weight_decay=0.05*LEARNING_RATE)
     import sys
     best_val_loss = sys.maxsize
     best_val_acc = None # come with best validation loss
     best_train_loss = None
     best_train_acc = None
 
+    val_acc_l = []
+    patience = 5
     for epoch in range(NUM_EPOCHS):
         # Total loss across train data
         train_loss = 0.
@@ -105,22 +132,12 @@ def train(device, use_glove, token_level="word", unk_cutoff = 3 ):
             loss.backward()
             optimizer.step()
 
-            diff_count = 0
-            same_count = 0
-            # for p1, p2 in zip(model.parameters(), old_model.parameters()):
-            #     if p1.data.ne(p2.data).sum() > 0:
-            #         diff_count += 1
-            #     else:
-            #         same_count += 1
-            # print("diff_count: ", diff_count)
-            # print("same count: ", same_count)
-
             # Accumulate metrics and update status
             train_loss += loss.item()
             train_correct += correct
             train_seqs += len(sentences_batch)
             tqdm_train_loader.set_description_str(
-                f"[Loss]: {train_loss / (batch_idx + 1):.4f} [Acc]: {train_correct / train_seqs:.4f}")
+                f"[Epoch {epoch:d}] [Loss]: {train_loss / (batch_idx + 1):.4f} [Acc]: {train_correct / train_seqs:.4f}")
         print()
 
         avg_train_loss = train_loss / len(tqdm_train_loader)
@@ -147,8 +164,8 @@ def train(device, use_glove, token_level="word", unk_cutoff = 3 ):
                 logits = model(sentences_batch)
 
                 # Compute loss and number of correct predictions and accumulate metrics and update status
-                val_loss += model.loss(logits, labels_batch).item()
-                val_correct += model.accuracy(logits, labels_batch).item() * len(logits)
+                val_loss += model.module.loss(logits, labels_batch).item()
+                val_correct += model.module.accuracy(logits, labels_batch).item() * len(logits)
                 val_seqs += len(sentences_batch)
                 tqdm_val_loader.set_description_str(
                     f"[Loss]: {val_loss / (batch_idx + 1):.4f} [Acc]: {val_correct / val_seqs:.4f}")
@@ -157,12 +174,21 @@ def train(device, use_glove, token_level="word", unk_cutoff = 3 ):
         avg_val_loss = val_loss / len(tqdm_val_loader)
         val_accuracy = val_correct / val_seqs
         print(f"[Validation Loss]: {avg_val_loss:.4f} [Validation Accuracy]: {val_accuracy:.4f}")
+        val_acc_l.append(val_accuracy)
 
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             best_val_acc = val_accuracy  # come with best validation loss
             best_train_loss = avg_train_loss
             best_train_acc = train_accuracy
+            best_epoch = epoch
+            torch.save({'epoch': best_epoch,
+                        'model_stat_dict' :model.module.state_dict(),
+                        'embedding_matrix' : model.module.embedding.weight.data}, "./model/best_model.pt")
+        if len(val_acc_l) > patience + 1:
+            if val_acc_l[-1] < val_acc_l[-patience]:
+                break
+    print("best epoch : ", epoch)
     print("best_val_loss: ", best_val_loss)
     print("best_val_acc: ", best_val_acc)
     print("best_train_loss: ", best_train_loss)

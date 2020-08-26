@@ -1,0 +1,32 @@
+57% validation accuracy in LSTM 
+* it might be further improved by training few more epochs
+
+
+
+GRU performsd better even it's in the first epoch. 
+* I think it might because it focus on the right hidden layer
+
+GRU has achieved 63% in epoch 8-9 but suffer from gradient exploding + vanishing -> try different optimizer ->  RMSProp seems be biased >0.5 prediction
+
+GRU + BPE achieved 66%
+
+For some batch, the prediciton are all very small xx * e-1. Are the output nn sample independent for each data point. Like 1/10 batches will has this phenonmena. This phenonmena gets worser liek 1/2 in later training setting.
+
+Also, implementing early stopping/possibly grid search with different parameter
+
+* a new tokenizer, maybe try subword embedding
+* while classifying, we can compare the two output, the larger one has better chance. (this could be tested in some 1000 sentences hold out dataset)
+* model saving 
+
+
+So if we reached 70% validation accuracy, then we are likely to have more than 80% accuracy on classifying between two language model.
+
+Which one is correct sentence in predicting? The one outputs the higher score. 
+
+
+
+Train on shuffled dataset first(checkpoint), then we train on paralleled dataset(similar to inference)
+
+
+
+Is it possible to each training data point contains two sentences and out goal is output [1,0], [0, 1] 

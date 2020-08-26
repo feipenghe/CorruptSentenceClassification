@@ -67,13 +67,24 @@ class RNNBinaryClassificationModel(nn.Module):
         self.embedding.weight.data = embedding_matrix
 
         self.output_size = 1
-        self.hidden_dim = 200
-        self.n_layers = 1
-        self.rnn = nn.LSTM(input_size=embedding_dim, hidden_size=self.hidden_dim, num_layers=self.n_layers, batch_first = True)
-        self.fc = nn.Linear(self.hidden_dim * self.n_layers, self.output_size)
-        self.criterion = nn.BCELoss()
-        # self.criterion = nn.HingeEmbeddingLoss()
+        self.hidden_dim = 100
+        self.n_layers = 3
+        self.bidirect = True
+        if self.bidirect :
+            self.num_directions = 2
+        else:
+            self.num_directions = 1
+        self.rnn = nn.GRU(input_size=embedding_dim, hidden_size=self.hidden_dim, num_layers=self.n_layers, batch_first = True, bidirectional= self.bidirect )
+
+
+        self.fc1 = nn.Linear(self.hidden_dim * self.n_layers , self.hidden_dim * self.n_layers) # consider giving up this structure
+        self.fc2 = nn.Linear(self.hidden_dim * self.n_layers * self.num_directions,self.n_layers * self.num_directions)
+        self.fc3 = nn.Linear(self.n_layers * self.num_directions, 1)
         self.sm = nn.Sigmoid()
+        # self.criterion = nn.CrossEntropyLoss()
+        # self.criterion = nn.HingeEmbeddingLoss()
+        self.criterion = nn.BCELoss()
+
 
         self.device = device
 
@@ -88,41 +99,41 @@ class RNNBinaryClassificationModel(nn.Module):
         # inputs -> embedding
         embedding_input = self.embedding(inputs)  # inputs shape  2 x 30
 
-        batch_size = embedding_input.size(0)
+        h0= torch.zeros(self.n_layers * self.num_directions, inputs.size(0), self.hidden_dim).requires_grad_().cuda()
+        c0 = torch.zeros(self.n_layers * self.num_directions, inputs.size(0), self.hidden_dim).requires_grad_().cuda()
 
-
-        h0= torch.zeros(self.n_layers , inputs.size(0), self.hidden_dim).requires_grad_().to(self.device)
-        c0 = torch.zeros(self.n_layers , inputs.size(0), self.hidden_dim).requires_grad_().to(self.device)
-
-
-        # out, hidden= self.rnn(embedding_input)  # GRU or GPU
         try:
-            pred_out, (hidden, cell_state) = self.rnn(embedding_input, (h0.detach(), c0.detach())) # output 2 x max_seq_length x 64    # LSTM
+            _, hidden = self.rnn(embedding_input)  # GRU OR RNN
+            # pred_out, (hidden, cell_state) = self.rnn(embedding_input, (h0.detach(), c0.detach())) # output 2 x max_seq_length x 64    # LSTM
         except RuntimeError as re:
             print("inputs: ", inputs)
             print("embedding: ", embedding_input)
             print(re)
-        # hidden = torch.squeeze(hidden)
-        # out = self.fc(out[:, -1, :])
-        # print("hidden dim: ", hidden.shape)
-        # hidden = hidden.permute(1, 0, 2)
-        # out = self.fc(torch.reshape(hidden, (hidden.shape[1],-1)))
-        # out = torch.squeeze(hidden)
-        # print("pred out: ", pred_out.shape)
-        # print(self.embedding("they"))
-        # exit()
-        out= hidden.squeeze()
-        # print("out: ", out)
+            exit()
 
-        out = self.fc(out)
-        # print("out1: ", out)
+        out= hidden.squeeze()
+        # print("out: ", out.shape)
+
+        out = out.transpose(0, 1).contiguous() # batch_size x #layers x hidden_dim
+        out = out.view(out.size(0), -1)
+        # out = self.fc1(out)
+        # print("out1: ", out.shape)
+        # exit()
+        # print("out2: ", out.shape)
+        out = self.fc2(out)
+
+        out = self.fc3(out)
         out = self.sm(out)
-        # print("out2: ", out)
+
+        # out = self.fc3(out)
+        print("out: ", out)
+
+        # exit()
 
         return out
 
     def loss(self, logits, targets):
-        """
+        """ tensor([0.5774],
         Computes the binary cross-entropy loss.
         :param logits: Raw predictions from the model of shape (N, 1)
         :param targets: True labels of shape (N, 1)
@@ -154,9 +165,10 @@ class RNNBinaryClassificationModel(nn.Module):
 
 
 # Training parameters
-TRAINING_BATCH_SIZE = 2
-NUM_EPOCHS = 20
-LEARNING_RATE = 1e-4 # 0.001 acc went down
+TRAINING_BATCH_SIZE = 300
+NUM_EPOCHS = 25
+LEARNING_RATE = 5e-5 # 0.001 acc went down
 # LEARNING_RATE = 0.0001
 # Batch size for validation, this only affects performance.
-VAL_BATCH_SIZE = 128
+VAL_BATCH_SIZE = 500
+TEST_BATCH_SIZE = 10
