@@ -30,3 +30,8 @@ Train on shuffled dataset first(checkpoint), then we train on paralleled dataset
 
 
 Is it possible to each training data point contains two sentences and out goal is output [1,0], [0, 1] 
+
+TODO: dropout
+
+TODO: view(-1)/ flatten out the label (batch_size * bptt,100)
+TODO: 

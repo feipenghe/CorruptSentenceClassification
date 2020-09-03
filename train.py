@@ -6,8 +6,8 @@ import argparse
 from torch.utils.data.sampler import SubsetRandomSampler
 import numpy as np
 import torch.nn as nn
-from util import SentenceDataset, load_embedding_matrix
-from hw4_a6 import RNNBinaryClassificationModel, collate_fn, TRAINING_BATCH_SIZE, NUM_EPOCHS, LEARNING_RATE,\
+from util import SentenceDataset, load_embedding_matrix, collate_fn
+from model import RNNBinaryClassificationModel, TRAINING_BATCH_SIZE, NUM_EPOCHS, LEARNING_RATE,\
                 VAL_BATCH_SIZE
 
 
@@ -48,8 +48,7 @@ def generate_sampler(n, used_ratio = 1, val_ratio = 1/30, shuffle_dataset = True
     split = int(np.floor(used_n * val_ratio))
     if shuffle_dataset:
         # np.random.seed(random_seed)
-        np.random.shuffle(indic
-es)
+        np.random.shuffle(indices)
     train_indices, val_indices = indices[split:used_n], indices[:split]
 
     train_sampler = SubsetRandomSampler(train_indices)
@@ -58,10 +57,9 @@ es)
     return train_sampler, val_sampler
 
 def train(device, use_glove, token_level="word", unk_cutoff = 3 ):
+
     # Load datasets
     train_dataset = SentenceDataset("./challenge-data/train.tsv", tokenizer_path = None, token_level = token_level, unk_cutoff = unk_cutoff)
-
-    # val_dataset = SST2Dataset("./challenge-data/dev.tsv", train_dataset.vocab, train_dataset.reverse_vocab, token_level = token_level)
     n =len(train_dataset)
 
 
@@ -136,6 +134,7 @@ def train(device, use_glove, token_level="word", unk_cutoff = 3 ):
             train_loss += loss.item()
             train_correct += correct
             train_seqs += len(sentences_batch)
+            print(f"\t\t\t\t\t\t\t\t\t\t\t\t[Batch idx: {batch_idx:d}]  Batch accuracy: {correct/TRAINING_BATCH_SIZE :.4f}")
             tqdm_train_loader.set_description_str(
                 f"[Epoch {epoch:d}] [Loss]: {train_loss / (batch_idx + 1):.4f} [Acc]: {train_correct / train_seqs:.4f}")
         print()

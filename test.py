@@ -8,7 +8,8 @@ from train import generate_sampler
 from tokenizers import Tokenizer
 import argparse
 import torch.nn as nn
-from hw4_a6 import RNNBinaryClassificationModel, collate_fn, TRAINING_BATCH_SIZE, NUM_EPOCHS, LEARNING_RATE,\
+from util import collate_fn
+from model import RNNBinaryClassificationModel, TRAINING_BATCH_SIZE, NUM_EPOCHS, LEARNING_RATE,\
                 VAL_BATCH_SIZE, TEST_BATCH_SIZE
 from tqdm import tqdm
 
@@ -31,9 +32,9 @@ def test(device, old_model_state, old_embedding, dataset):
 
 
     n = len(dataset)
-    test_sampler = generate_sampler(n, shuffle_dataset = False)
+    # test_sampler = generate_sampler(n, shuffle_dataset = False)
 
-    TEST_BATCH_SIZE = 300
+
     test_loader = DataLoader(dataset, batch_size=TEST_BATCH_SIZE, collate_fn = collate_fn)
 
     print("Data examples:")
@@ -63,19 +64,23 @@ def test(device, old_model_state, old_embedding, dataset):
         sentences_batch, labels_batch = batch
         sentences_batch = sentences_batch.to(device)
         labels_batch = labels_batch.to(device)
+        print("labels batch: ", labels_batch)
         with torch.no_grad():
             # Make predictions
             logits = model(sentences_batch)
+            print("logits: ", logits)
             pairLogits = toPairLogits(logits)
 
             correct = model.module.accuracy(pairLogits, labels_batch).item() * len(pairLogits)
             test_correct += correct
             test_seqs += len(sentences_batch)
+            print(f"batch accuracy: {correct/TEST_BATCH_SIZE:.4f} ")
             tqdm_test_loader.set_description_str(
                 f"[Acc]: {test_correct / test_seqs: .4f}"
             )
-        test_accuracy = test_correct/test_seqs
-        print(f"[Test accuracy]: {test_accuracy:.4f}")
+
+    test_accuracy = test_correct/test_seqs
+    print(f"[Test accuracy]: {test_accuracy:.4f}")
 
 
 def toPairLogits(t):
@@ -101,10 +106,7 @@ if __name__ == '__main__':
     old_model_state = checkpoint['model_stat_dict']
     token_level = "word"
     unk_cutoff = 3
-    dataset = SentenceDataset("./challenge-data/train.tsv", token_level=token_level,
-                                   unk_cutoff=unk_cutoff) # can be either test or fine-tune traiing
-    # TODO: load bpe
+    dataset = SentenceDataset("./challenge-data/train_20000.tsv", unk_cutoff=unk_cutoff, tokenizer_path = tokenizer_path) # can be either test or fine-tune traiing
 
-    tokenizer = Tokenizer.from_file(tokenizer_path)
     device = 0
     test(device, old_model_state, old_embedding, dataset)
