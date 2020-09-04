@@ -44,9 +44,10 @@ def iterable2tensor2(iterable):
             try:
                 tensor = torch.cat((tensor, t), dim=0)
             except RuntimeError as e:
-                print(e)
+
                 print(tensor)
                 print(t)
+                print(e)
                 exit()
 
     return tensor
@@ -105,6 +106,15 @@ def seq_collate_fn(batch):
     pad_t = torch.tensor([0]).long()
     padded_sents = []
 
+    # uniform sequence batches
+    if max_sequence_length % bptt == 0:
+        num_seq = max_sequence_length//bptt
+    else:
+        num_seq = (max_sequence_length // bptt) + 1
+
+    max_sequence_length = num_seq * bptt + 1
+
+    # padding sentence tensor to make it uniform
     for i in range(len(sentences)): # pad each sent
         cur_sent_t = sentences[i]
         num_pad = max_sequence_length - cur_sent_t.shape[0]
@@ -118,6 +128,7 @@ def seq_collate_fn(batch):
     def get_seq_batch(sent_batch, i, bptt):
         seq_len = min(bptt, sent_batch.size(1) - 1 - i)
         # TODO: check if this indexing is correct
+        # TODO: sometime seq len is zero
         seq_data = sent_batch[:, i:i + seq_len]
         seq_target = sent_batch[:, i + 1:i + 1 + seq_len]
         return seq_data, seq_target
@@ -129,8 +140,15 @@ def seq_collate_fn(batch):
         input, target = get_seq_batch(padded_sents, i, bptt)
         # TODO: might affect    the accuray of predicting sentence ends
         if input.size(1) == bptt:
+            print("valid input: ", input, "\n", input.size())
+            # if not is_zero_tensor(input):
             seq_inputs.append(input)
             seq_targets.append(target)
+        else:
+            print("seq len is zero!!!")
+            print("input: ", input)
+            print("input size: ", input.size())
+
     # TODO: input tensor has a special i2t method
     seq_inputs = iterable2tensor2(seq_inputs)
     # print("label before iterable: ", len(seq_targets) , "   ", seq_targets[0].shape)
@@ -141,7 +159,12 @@ def seq_collate_fn(batch):
     # exit()
     return seq_inputs, labels.view(-1), seq_inputs.size(0)
 
-
+def is_zero_tensor(t):
+    num_nonzero = torch.sum(torch.nonzero(t))
+    if num_nonzero == 0:
+        return True
+    else:
+        return False
 
 def load_embedding_matrix(vocab, use_glove, glove_file_path="glove.840B.300d.txt"):
     if use_glove:
@@ -304,7 +327,7 @@ class SentenceDataset(Dataset):
             indices.append(self.tokenizer.token_to_id(token))
         return torch.tensor(indices)
 
-    def indices_to_tokens(self, indices, token_level = "word"):
+    def indices_to_tokens(self, indices):
         """
         Converts indices to tokens and concatenates them as a string.
         :param indices: A tensor of indices of shape (n, 1), a list of (1, 1) tensors or a list of indices (ints)
