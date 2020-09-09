@@ -2,8 +2,57 @@ import torch
 from torch.utils.data import Dataset
 
 import csv
-
+import numpy as np
 from collections import Counter
+from torch.utils.data.sampler import SubsetRandomSampler
+
+
+def generate_pair_sampler(n, used_ratio = 1, val_ratio = 1/30, shuffle_dataset = True):
+    '''
+    Sample pair of sentences as mini-batch
+    :param n:
+    :param used_ratio:
+    :param val_ratio:
+    :param shuffle_dataset:
+    :return:
+    '''
+    indices = list(range(n))
+    sent1_indices = indices[::2]
+    if shuffle_dataset:
+        sent1_indices
+
+    used_n = int(np.floor(n * used_ratio))
+    split = int(np.floor(used_n * val_ratio))
+    if shuffle_dataset:
+        # np.random.seed(random_seed)
+        np.random.shuffle(indices)
+    train_indices, val_indices = indices[split:used_n], indices[:split]
+
+
+
+def generate_sampler(n, used_ratio = 1, val_ratio = 1/30, shuffle_dataset = True):
+    '''
+    Generate training data sampler and validation data sampler
+    :param n: the size of dataset
+    :param used_ratio: how much dataset is used to train
+    :param val_ratio: how much training dataset is splitted into validation
+    :param shuffle_dataset: whether to shuffle dataset
+    :return: train_sampler, validation sampler
+    '''
+    indices = list(range(n))
+    used_n = int(np.floor(n * used_ratio))
+    split = int(np.floor(used_n * val_ratio))
+    if shuffle_dataset:
+        # np.random.seed(random_seed)
+        np.random.shuffle(indices)
+    train_indices, val_indices = indices[split:used_n], indices[:split]
+
+    train_sampler = SubsetRandomSampler(train_indices)
+    val_sampler = SubsetRandomSampler(val_indices)
+
+    return train_sampler, val_sampler
+
+
 
 def iterable2tensor(iterable):
     '''
@@ -24,7 +73,21 @@ def iterable2tensor(iterable):
     return tensor
 
 
-def iterable2tensor2(iterable):
+
+def is_ideal_data(t1, t2):
+    num_nonzero = torch.nonzero(t1).nelement()
+    # print("t2:   ", t2)
+    if num_nonzero < t1.size(0) and is_zero_tensor(t2):
+        # print("filtered tensor")
+        return False
+    if (not is_zero_tensor(t1) and not is_zero_tensor(t2)) :
+        return True
+    else:
+        return False
+
+
+
+def iterable2tensor2(iterable1, iterable2):
     '''
     Transform tensors in tuple into a single tensor
     Example input: (tensor([1]), tensor([0]))   |   [tensor([1]), tensor([0])
@@ -32,25 +95,31 @@ def iterable2tensor2(iterable):
     :param iterable:
     :return: tensor
     '''
-    tensor = None
-    # print(len(iterable))
-    # print(iterable[0].shape)
-    # exit()
-    for t in iterable:
-        if tensor == None:
-            tensor = t
+
+    assert len(iterable1) == len(iterable2), "Two tensors should have the same size"
+    n = len(iterable1)
+    tensor1 = None
+    tensor2 = None
+    for i in range(n):
+        t1, t2 = iterable1[i], iterable2[i]
+        if tensor1 == None:
+            tensor1 = t1
+            tensor2 = t2
         else:
-            # t = torch.unsqueeze(t, dim=0)
-            try:
-                tensor = torch.cat((tensor, t), dim=0)
-            except RuntimeError as e:
-
-                print(tensor)
-                print(t)
-                print(e)
-                exit()
-
-    return tensor
+            if t1.size(0) > 1: # batch size > 1
+                for j in range(len(t1)):
+                    if is_ideal_data(t1[j], t2[j]):
+                        # try:
+                        tensor1 = torch.cat((tensor1, t1[j].unsqueeze(0)), dim = 0)
+                        tensor2 = torch.cat((tensor2, t2[j].unsqueeze(0)), dim = 0)
+                        # except RuntimeError as re:
+                        #     print(re)
+                        #     print(tensor1.shape)
+                        #     print(t1.unsqueeze(0).shape)
+                        #     print(tensor1)
+                        #     print(t1)
+                        #     exit()
+    return tensor1, tensor2
 
 def collate_fn(batch):
     """
@@ -93,7 +162,7 @@ def seq_collate_fn(batch):
     :param one batch of sentence data
     :return sequence inputs with size (seq_batch_size, seq_length), labels with size (num_seq*bptt, 1) and num_seq
     """
-    bptt = 3
+    bptt = 4
 
 
     # pad sentences
@@ -105,20 +174,23 @@ def seq_collate_fn(batch):
             max_sequence_length = temp_len
     pad_t = torch.tensor([0]).long()
     padded_sents = []
-
+    # print("max seq length1: ", max_sequence_length)
     # uniform sequence batches
     if max_sequence_length % bptt == 0:
         num_seq = max_sequence_length//bptt
     else:
-        num_seq = (max_sequence_length // bptt) + 1
+        num_seq = max_sequence_length // bptt # meaning less to predict 0
 
-    max_sequence_length = num_seq * bptt + 1
-
+    max_sequence_length = num_seq * bptt + 1 # pad a additional target tensor
+    # print("max seq length2: ", max_sequence_length)
     # padding sentence tensor to make it uniform
     for i in range(len(sentences)): # pad each sent
         cur_sent_t = sentences[i]
         num_pad = max_sequence_length - cur_sent_t.shape[0]
-        padded_t = torch.cat( (cur_sent_t.long(), pad_t.repeat(num_pad).long() ) )
+        if num_pad > 0:
+            padded_t = torch.cat( (cur_sent_t.long(), pad_t.repeat(num_pad).long() ) )
+        else:
+            padded_t = cur_sent_t.long().narrow(0,0, max_sequence_length)  # for num_pad < 0, it means we trimmed off the last sequence as it provides no meaningaful target
         padded_sents.append(padded_t)
     padded_sents = iterable2tensor(padded_sents)
 
@@ -126,11 +198,15 @@ def seq_collate_fn(batch):
 
     # build sequences
     def get_seq_batch(sent_batch, i, bptt):
-        seq_len = min(bptt, sent_batch.size(1) - 1 - i)
+        seq_len = bptt
+        # seq_len = min(bptt, sent_batch.size(1) - 1 - i)
         # TODO: check if this indexing is correct
         # TODO: sometime seq len is zero
+
+
         seq_data = sent_batch[:, i:i + seq_len]
         seq_target = sent_batch[:, i + 1:i + 1 + seq_len]
+
         return seq_data, seq_target
 
 
@@ -139,28 +215,21 @@ def seq_collate_fn(batch):
     for seq_batch_idx, i in enumerate(range(0, max_sequence_length, bptt)):
         input, target = get_seq_batch(padded_sents, i, bptt)
         # TODO: might affect    the accuray of predicting sentence ends
-        if input.size(1) == bptt:
-            print("valid input: ", input, "\n", input.size())
-            # if not is_zero_tensor(input):
+        if input.size(1) == bptt:  # don't take the last target as the input
             seq_inputs.append(input)
             seq_targets.append(target)
-        else:
-            print("seq len is zero!!!")
-            print("input: ", input)
-            print("input size: ", input.size())
 
     # TODO: input tensor has a special i2t method
-    seq_inputs = iterable2tensor2(seq_inputs)
+    seq_inputs, labels = iterable2tensor2(seq_inputs, seq_targets)
     # print("label before iterable: ", len(seq_targets) , "   ", seq_targets[0].shape)
-    labels = iterable2tensor2(seq_targets)
-    # seq_inputs = seq_inputs.transpose(1,0)
-    # print("input shape: ", seq_inputs.shape)
-    # print("label shape: ",  labels.view(-1).shape)
-    # exit()
-    return seq_inputs, labels.view(-1), seq_inputs.size(0)
+    # labels = iterable2tensor2(seq_targets)
+    # print("seq inputs: ", seq_inputs) # it shouln't include zero tensor
+    #
+    # print("labels: ", labels)
+    return seq_inputs, labels.view(-1)
 
 def is_zero_tensor(t):
-    num_nonzero = torch.sum(torch.nonzero(t))
+    num_nonzero = torch.nonzero(t).nelement()
     if num_nonzero == 0:
         return True
     else:
@@ -219,7 +288,7 @@ import re
 
 
 class SentenceDataset(Dataset):
-    def __init__(self, sentence_data_path, token_level ="word", unk_cutoff = 3, tokenizer_path ="./tokenizer/", \
+    def __init__(self, sentence_data_path, unk_cutoff = 3, tokenizer_path ="./tokenizer/", \
                  tokenizer_training_path ="./challenge-data/train_correct.txt", sequence_length = None):
 
         '''
@@ -235,9 +304,6 @@ class SentenceDataset(Dataset):
         sentences = []
         # vocab_build_sents = []
         labels = []
-
-
-
 
         # intialize or load tokenizer
         if tokenizer_path == None:

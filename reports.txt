@@ -31,7 +31,46 @@ Train on shuffled dataset first(checkpoint), then we train on paralleled dataset
 
 Is it possible to each training data point contains two sentences and out goal is output [1,0], [0, 1] 
 
-TODO: dropout
 
-TODO: view(-1)/ flatten out the label (batch_size * bptt,100)
-TODO: 
+(finished)TODO: detach
+(solved)TODO: fix sent end
+TODO: uniform batches 
+-> build uniform batches for all data -> but it returns a built data loader 
+-> control the number of sequences generated
+
+data pipeline: custom dataset class inherited from dataset -> dataloader with help of collate funtionn 
+* collate function takes one batch of dataset 
+ 
+ 
+ if transform all sentences to sequences at the very beginning
+ 
+We need to do the same thing for inference dataset. Then how to make sure it can have consecutive text generation consistent with the sentences.
+ 
+ What should we do during the inference stage? (seq batch size x seq len x embedding)
+
+
+Issue: is it a general system to challenge? is it possible it doesn't generate a different token than the orignal one?
+
+
+Use the predicted seq to predict the following sequence. Why this way? 
+
+
+TODO: output a complete sequence (sentence) and loss on different tokens(normal loss) + loss on discriminator correct prediction + additional loss if sentence is completely same(even though it's very unlikely). 
+
+TODO: might add step size to fasten decoder training
+
+TODO: add attention layer
+
+
+TODO: hard to split the batch outside of the model
+
+TODO: epoch
+
+TODO: dropout/gradient clipping
+
+TODO: what is predict/target.  The word index? If so, how to output the word index predict
+
+TODO: model saving and loading
+TODO: data parallel
+TODO: gradient clipping and dropout
+

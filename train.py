@@ -3,7 +3,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import argparse
-from torch.utils.data.sampler import SubsetRandomSampler
+
 import numpy as np
 import torch.nn as nn
 from util import SentenceDataset, load_embedding_matrix, collate_fn
@@ -11,50 +11,6 @@ from model import RNNBinaryClassificationModel, TRAINING_BATCH_SIZE, NUM_EPOCHS,
                 VAL_BATCH_SIZE
 
 
-def generate_pair_sampler(n, used_ratio = 1, val_ratio = 1/30, shuffle_dataset = True):
-    '''
-    Sample pair of sentences as mini-batch
-    :param n:
-    :param used_ratio:
-    :param val_ratio:
-    :param shuffle_dataset:
-    :return:
-    '''
-    indices = list(range(n))
-    sent1_indices = indices[::2]
-    if shuffle_dataset:
-        sent1_indices
-
-    used_n = int(np.floor(n * used_ratio))
-    split = int(np.floor(used_n * val_ratio))
-    if shuffle_dataset:
-        # np.random.seed(random_seed)
-        np.random.shuffle(indices)
-    train_indices, val_indices = indices[split:used_n], indices[:split]
-
-
-
-def generate_sampler(n, used_ratio = 1, val_ratio = 1/30, shuffle_dataset = True):
-    '''
-    Generate training data sampler and validation data sampler
-    :param n: the size of dataset
-    :param used_ratio: how much dataset is used to train
-    :param val_ratio: how much training dataset is splitted into validation
-    :param shuffle_dataset: whether to shuffle dataset
-    :return: train_sampler, validation sampler
-    '''
-    indices = list(range(n))
-    used_n = int(np.floor(n * used_ratio))
-    split = int(np.floor(used_n * val_ratio))
-    if shuffle_dataset:
-        # np.random.seed(random_seed)
-        np.random.shuffle(indices)
-    train_indices, val_indices = indices[split:used_n], indices[:split]
-
-    train_sampler = SubsetRandomSampler(train_indices)
-    val_sampler = SubsetRandomSampler(val_indices)
-
-    return train_sampler, val_sampler
 
 def train(device, use_glove, token_level="word", unk_cutoff = 3 ):
 
@@ -117,15 +73,10 @@ def train(device, use_glove, token_level="word", unk_cutoff = 3 ):
             labels_batch = labels_batch.to(device)
             # Make predictions
             logits = model(sentences_batch)
-            # print("logits: ", logits)
-            # print("labels_batch: ", labels_batch)
-            # exit()
             # Compute loss and number of correct predictions
             loss = model.module.loss(logits, labels_batch)
 
             correct = model.module.accuracy(logits, labels_batch).item() * len(logits)
-            # old_model = copy.deepcopy(model)
-            # print(model.parameters())
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()

@@ -13,19 +13,6 @@ from model import RNNBinaryClassificationModel, TRAINING_BATCH_SIZE, NUM_EPOCHS,
                 VAL_BATCH_SIZE, TEST_BATCH_SIZE
 from tqdm import tqdm
 
-def fine_tune(device, old_model_state, old_embedding, dataset):
-    n = len(dataset)
-    ft_sampler = generate_sampler(n, shuffle_dataset = False)
-    FT_BATCH_SIZE = 300
-
-    test_loader = DataLoader(dataset, batch_size=FT_BATCH_SIZE, collate_fn = collate_fn)
-
-    model = RNNBinaryClassificationModel(old_embedding, device).cuda()
-    model.load_state_dict(old_model_state)
-    model = nn.DataParallel(model, device_ids=[0,1])
-
-    model.to(device)
-    tqdm_fn_test_loader = tqdm(test_loader)
 
 
 def test(device, old_model_state, old_embedding, dataset):
